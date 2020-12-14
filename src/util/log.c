@@ -210,12 +210,13 @@ void log_set_lossy(Log *log, bool lossy) {
 
 static bool log_alloc(Log *log) {
         _c_cleanup_(c_closep) int mem_fd = -1;
+        int map_flags = MAP_SHARED;
         void *p;
         int r;
 
         if (log->error)
                 return false;
-        if (log->mem_fd >= 0)
+        if (log->map != MAP_FAILED)
                 return true;
 
         c_assert(!log->offset);
@@ -227,6 +228,11 @@ static bool log_alloc(Log *log) {
          */
         mem_fd = syscall_memfd_create("dbus-broker-log", 0x3);
         if (mem_fd < 0) {
+                if (errno == EINVAL && log->mode == LOG_MODE_STDERR) {
+                    /* Luckily we don't need shared memory in stderr mode. */
+                    map_flags = MAP_PRIVATE | MAP_ANONYMOUS;
+                    goto map;
+                }
                 log->error = error_origin(-errno);
                 return false;
         }
@@ -237,7 +243,8 @@ static bool log_alloc(Log *log) {
                 return false;
         }
 
-        p = mmap(NULL, log->size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, 0);
+map:
+        p = mmap(NULL, log->size, PROT_READ | PROT_WRITE, map_flags, mem_fd, 0);
         if (p == MAP_FAILED) {
                 log->error = error_origin(-errno);
                 return false;
