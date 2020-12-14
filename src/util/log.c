@@ -87,9 +87,6 @@
 #include "util/log.h"
 #include "util/syscall.h"
 
-/* lets retrict log records to 256MiB */
-#define LOG_SIZE_MAX (256ULL * 1024ULL * 1024ULL)
-
 /* warning that is sent on first dropped log message */
 #define LOG_WARNING_DROPPED "<3>Log messages dropped\n"
 
@@ -100,8 +97,9 @@
  * This initializes the log-context @log with no output configured. Hence, all
  * log messages will be silently dropped.
  */
-void log_init(Log *log) {
+void log_init(Log *log, size_t size) {
         *log = (Log)LOG_NULL;
+        log->size = size;
         log->mode = LOG_MODE_NONE;
         log->consumed = false;
 }
@@ -110,15 +108,17 @@ void log_init(Log *log) {
  * log_init_stderr() - initialize log context
  * @log:                log context to initialize
  * @stderr_fd:          stderr stream FD to use
+ * @size:               size of buffer
  *
  * This initializes the log-context @log and prepares it for output to stderr
  * given its file-descriptor as @stderr_fd. Note that the file-descriptor is
  * not consumed, but ownership is retained by the caller.
  */
-void log_init_stderr(Log *log, int stderr_fd) {
+void log_init_stderr(Log *log, int stderr_fd, size_t size) {
         c_assert(stderr_fd >= 0);
         *log = (Log)LOG_NULL;
         log->log_fd = stderr_fd;
+        log->size = size;
         log->mode = LOG_MODE_STDERR;
         log->consumed = false;
 }
@@ -127,14 +127,16 @@ void log_init_stderr(Log *log, int stderr_fd) {
  * log_init_journal() - initialize log context
  * @log:                log context to initialize
  * @journal_fd:         Datagram-FD to the journal
+ * @size:               size of buffer
  *
  * This initializes the log-context @log with the journal datagram
  * socket @journal_fd to be used for log-messages.
  */
-void log_init_journal(Log *log, int journal_fd) {
+void log_init_journal(Log *log, int journal_fd, size_t size) {
         c_assert(journal_fd >= 0);
         *log = (Log)LOG_NULL;
         log->log_fd = journal_fd;
+        log->size = size;
         log->mode = LOG_MODE_JOURNAL;
         log->consumed = false;
 }
@@ -166,7 +168,7 @@ void log_init_journal_consume(Log *log, int journal_fd) {
  */
 void log_deinit(Log *log) {
         if (log->map != MAP_FAILED)
-                munmap(log->map, LOG_SIZE_MAX);
+                munmap(log->map, log->size);
         c_close(log->mem_fd);
         if (log->consumed)
                 c_close(log->log_fd);
@@ -229,13 +231,13 @@ static bool log_alloc(Log *log) {
                 return false;
         }
 
-        r = ftruncate(mem_fd, LOG_SIZE_MAX);
+        r = ftruncate(mem_fd, log->size);
         if (r < 0) {
                 log->error = error_origin(-errno);
                 return false;
         }
 
-        p = mmap(NULL, LOG_SIZE_MAX, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, 0);
+        p = mmap(NULL, log->size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, 0);
         if (p == MAP_FAILED) {
                 log->error = error_origin(-errno);
                 return false;
@@ -406,7 +408,7 @@ static int log_journal_send(Log *log) {
 
         mfd = log->mem_fd;
         log->mem_fd = -1;
-        munmap(log->map, LOG_SIZE_MAX);
+        munmap(log->map, log->size);
         log->map = MAP_FAILED;
 
         r = ftruncate(mfd, log->offset);
@@ -565,7 +567,7 @@ void log_append(Log *log, const void *data, size_t n_data) {
         if (!n_data || !log_alloc(log))
                 return;
 
-        if (LOG_SIZE_MAX - log->offset < n_data) {
+        if (log->size - log->offset < n_data) {
                 log->error = LOG_E_TRUNCATED;
                 return;
         }
@@ -590,10 +592,10 @@ void log_vappendf(Log *log, const char *format, va_list args) {
                 return;
 
         r = vsnprintf(log->map + log->offset,
-                      LOG_SIZE_MAX - log->offset,
+                      log->size - log->offset,
                       format,
                       args);
-        if (r < 0 || r >= (ssize_t)(LOG_SIZE_MAX - log->offset)) {
+        if (r < 0 || r >= (ssize_t)(log->size - log->offset)) {
                 log->error = LOG_E_TRUNCATED;
                 return;
         }

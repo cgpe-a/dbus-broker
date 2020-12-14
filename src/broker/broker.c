@@ -40,7 +40,7 @@ static int broker_dispatch_signals(DispatchFile *file) {
         return DISPATCH_E_EXIT;
 }
 
-int broker_new(Broker **brokerp, const char *machine_id, int log_fd, int controller_fd, uint64_t max_bytes, uint64_t max_fds, uint64_t max_matches, uint64_t max_objects) {
+int broker_new(Broker **brokerp, const char *machine_id, int log_fd, uint64_t log_max_bytes, int controller_fd, uint64_t max_bytes, uint64_t max_fds, uint64_t max_matches, uint64_t max_objects) {
         _c_cleanup_(broker_freep) Broker *broker = NULL;
         struct ucred ucred;
         socklen_t z;
@@ -71,11 +71,11 @@ int broker_new(Broker **brokerp, const char *machine_id, int log_fd, int control
         broker->controller = (Controller)CONTROLLER_NULL(broker->controller);
 
         if (log_fd < 0)
-                log_init(&broker->log);
+                log_init(&broker->log, log_max_bytes);
         else if (log_type == SOCK_STREAM)
-                log_init_stderr(&broker->log, log_fd);
+                log_init_stderr(&broker->log, log_fd, log_max_bytes);
         else if (log_type == SOCK_DGRAM)
-                log_init_journal(&broker->log, log_fd);
+                log_init_journal(&broker->log, log_fd, log_max_bytes);
         else
                 return error_origin(-ENOTRECOVERABLE);
 

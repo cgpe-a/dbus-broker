@@ -35,6 +35,7 @@ struct Log {
         int level;
 
         int mem_fd;
+        size_t size;
         void *map;
         size_t offset;
 };
@@ -47,9 +48,9 @@ struct Log {
 
 /* log context */
 
-void log_init(Log *log);
-void log_init_stderr(Log *log, int stderr_fd);
-void log_init_journal(Log *log, int journal_fd);
+void log_init(Log *log, size_t size);
+void log_init_stderr(Log *log, int stderr_fd, size_t size);
+void log_init_journal(Log *log, int journal_fd, size_t size);
 void log_init_journal_consume(Log *log, int journal_fd);
 void log_deinit(Log *log);
 

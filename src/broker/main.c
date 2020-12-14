@@ -19,6 +19,7 @@ bool main_arg_audit = false;
 int main_arg_controller = 3;
 int main_arg_log = -1;
 const char *main_arg_machine_id = NULL;
+uint64_t main_arg_log_max_bytes = 256 * 1024 * 1024;
 uint64_t main_arg_max_bytes = 512 * 1024 * 1024;
 uint64_t main_arg_max_fds = 128;
 uint64_t main_arg_max_matches = 16 * 1024;
@@ -46,6 +47,7 @@ static int parse_argv(int argc, char *argv[]) {
                 ARG_AUDIT,
                 ARG_CONTROLLER,
                 ARG_LOG,
+                ARG_LOG_MAX_BYTES,
                 ARG_MACHINE_ID,
                 ARG_MAX_BYTES,
                 ARG_MAX_FDS,
@@ -58,6 +60,7 @@ static int parse_argv(int argc, char *argv[]) {
                 { "audit",              no_argument,            NULL,   ARG_AUDIT               },
                 { "controller",         required_argument,      NULL,   ARG_CONTROLLER          },
                 { "log",                required_argument,      NULL,   ARG_LOG                 },
+                { "log-max-bytes",      required_argument,      NULL,   ARG_LOG_MAX_BYTES       },
                 { "machine-id",         required_argument,      NULL,   ARG_MACHINE_ID          },
                 { "max-bytes",          required_argument,      NULL,   ARG_MAX_BYTES           },
                 { "max-fds",            required_argument,      NULL,   ARG_MAX_FDS             },
@@ -108,6 +111,21 @@ static int parse_argv(int argc, char *argv[]) {
                         }
 
                         main_arg_log = vul;
+                        break;
+                }
+
+                case ARG_LOG_MAX_BYTES: {
+                        unsigned long long vul;
+                        char *end;
+
+                        errno = 0;
+                        vul = strtoull(optarg, &end, 10);
+                        if (errno != 0 || *end || optarg == end) {
+                                fprintf(stderr, "%s: invalid max log bytes -- '%s'\n", program_invocation_name, optarg);
+                                return MAIN_FAILED;
+                        }
+
+                        main_arg_log_max_bytes = vul;
                         break;
                 }
 
@@ -237,7 +255,7 @@ static int run(void) {
         _c_cleanup_(broker_freep) Broker *broker = NULL;
         int r;
 
-        r = broker_new(&broker, main_arg_machine_id, main_arg_log, main_arg_controller, main_arg_max_bytes, main_arg_max_fds, main_arg_max_matches, main_arg_max_objects);
+        r = broker_new(&broker, main_arg_machine_id, main_arg_log, main_arg_log_max_bytes, main_arg_controller, main_arg_max_bytes, main_arg_max_fds, main_arg_max_matches, main_arg_max_objects);
         if (!r)
                 r = broker_run(broker);
 
