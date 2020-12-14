@@ -69,6 +69,7 @@ static int gid_compare(const void *va, const void *vb) {
                 return 0;
 }
 
+#define SO_PEERGROUPS 59
 int sockopt_get_peergroups(int fd, Log *log, uid_t uid, gid_t primary_gid, gid_t **gidsp, size_t *n_gidsp) {
         _c_cleanup_(c_freep) gid_t *gids = NULL;
         socklen_t socklen;
